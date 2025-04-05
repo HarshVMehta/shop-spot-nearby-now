@@ -1,7 +1,7 @@
 
 import { defaultLocations } from "../utils/mockData";
 
-// In a real application, this would use a geocoding API like Mapbox Geocoding API
+// In a real application, this would use a geocoding API like Google Maps Geocoding API
 export const searchLocation = async (query: string): Promise<{ lat: number, lng: number } | null> => {
   // This is a mock implementation - it just returns coordinates for known cities
   // or returns null if the location isn't found
@@ -18,3 +18,6 @@ export const searchLocation = async (query: string): Promise<{ lat: number, lng:
   // In a real app, we would return null or throw an error
   return defaultLocations["New York"];
 };
+
+// In a real application, this would use the Google Maps Geocoding API to convert 
+// addresses to coordinates and vice versa

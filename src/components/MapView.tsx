@@ -1,14 +1,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import { Loader } from '@googlemaps/js-api-loader';
 import { Shop } from './ShopCard';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { X } from 'lucide-react';
 
-// Storage key for Mapbox token
-const MAPBOX_TOKEN_STORAGE_KEY = 'shopfinder_mapbox_token';
+// Storage key for Google Maps API token
+const GOOGLE_MAPS_API_KEY_STORAGE = 'shopfinder_google_maps_api_key';
 
 interface MapViewProps {
   shops: Shop[];
@@ -18,8 +17,8 @@ interface MapViewProps {
 
 const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<{[key: string]: mapboxgl.Marker}>({});
+  const map = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<{[key: string]: google.maps.Marker}>({});
   const [mapInitialized, setMapInitialized] = useState(false);
   const [apiKey, setApiKey] = useState<string>('');
   const [inputApiKey, setInputApiKey] = useState<string>('');
@@ -27,7 +26,7 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
   
   // Load API key from localStorage on component mount
   useEffect(() => {
-    const storedToken = localStorage.getItem(MAPBOX_TOKEN_STORAGE_KEY);
+    const storedToken = localStorage.getItem(GOOGLE_MAPS_API_KEY_STORAGE);
     if (storedToken) {
       setApiKey(storedToken);
     }
@@ -35,7 +34,7 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
 
   const handleSaveApiKey = () => {
     if (inputApiKey.trim()) {
-      localStorage.setItem(MAPBOX_TOKEN_STORAGE_KEY, inputApiKey.trim());
+      localStorage.setItem(GOOGLE_MAPS_API_KEY_STORAGE, inputApiKey.trim());
       setApiKey(inputApiKey.trim());
       setShowKeyForm(false);
       // Reload the page to reinitialize the map with the new API key
@@ -44,7 +43,7 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
   };
 
   const handleRemoveApiKey = () => {
-    localStorage.removeItem(MAPBOX_TOKEN_STORAGE_KEY);
+    localStorage.removeItem(GOOGLE_MAPS_API_KEY_STORAGE);
     setApiKey('');
     setInputApiKey('');
     setShowKeyForm(false);
@@ -56,37 +55,42 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
   useEffect(() => {
     if (!mapContainer.current || map.current || !apiKey) return;
 
-    mapboxgl.accessToken = apiKey;
+    const loader = new Loader({
+      apiKey: apiKey,
+      version: 'weekly',
+    });
     
-    try {
-      const initialLocation = shops.length > 0 
-        ? { lng: shops[0].lng, lat: shops[0].lat } 
-        : { lng: -74.006, lat: 40.7128 }; // Default to NYC if no shops
-      
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/streets-v11',
-        center: [initialLocation.lng, initialLocation.lat],
-        zoom: 12
-      });
-
-      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-      
-      map.current.on('load', () => {
+    loader.load().then(() => {
+      try {
+        const initialLocation = shops.length > 0 
+          ? { lng: shops[0].lng, lat: shops[0].lat } 
+          : { lng: -74.006, lat: 40.7128 }; // Default to NYC if no shops
+        
+        map.current = new google.maps.Map(mapContainer.current!, {
+          center: { lat: initialLocation.lat, lng: initialLocation.lng },
+          zoom: 12,
+          mapTypeId: google.maps.MapTypeId.ROADMAP,
+          mapTypeControl: true,
+          streetViewControl: true,
+          zoomControl: true,
+          fullscreenControl: true
+        });
+        
         setMapInitialized(true);
-      });
-    } catch (error) {
-      console.error("Error initializing map:", error);
-      // If there's an initialization error, it might be due to an invalid API key
-      localStorage.removeItem(MAPBOX_TOKEN_STORAGE_KEY);
+      } catch (error) {
+        console.error("Error initializing map:", error);
+        // If there's an initialization error, it might be due to an invalid API key
+        localStorage.removeItem(GOOGLE_MAPS_API_KEY_STORAGE);
+        setApiKey('');
+      }
+    }).catch(error => {
+      console.error("Error loading Google Maps:", error);
+      localStorage.removeItem(GOOGLE_MAPS_API_KEY_STORAGE);
       setApiKey('');
-    }
+    });
 
     return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
+      map.current = null;
     };
   }, [apiKey, shops]);
 
@@ -95,34 +99,38 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
     if (!map.current || !mapInitialized) return;
 
     // Remove existing markers
-    Object.values(markersRef.current).forEach(marker => marker.remove());
+    Object.values(markersRef.current).forEach(marker => marker.setMap(null));
     markersRef.current = {};
 
     // Add new markers
     shops.forEach(shop => {
-      // Create marker element
-      const el = document.createElement('div');
-      el.className = 'flex justify-center items-center';
-      el.innerHTML = `<svg width="30" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 21C16.9706 17 20 13.4183 20 10C20 6.13401 16.4183 3 12 3C7.58172 3 4 6.13401 4 10C4 13.4183 7.02944 17 12 21Z" fill="#0084e6" stroke="white" stroke-width="2"/>
-      </svg>`;
-      
-      const popup = new mapboxgl.Popup({ offset: 25 })
-        .setHTML(`
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
           <div>
-            <h3 class="font-bold">${shop.name}</h3>
+            <h3 style="font-weight: bold;">${shop.name}</h3>
             <p>${shop.type === 'rent' ? 'For Rent' : 'For Sale'}: $${shop.price.toLocaleString()}</p>
             <p>${shop.size} sq.ft</p>
           </div>
-        `);
-
-      // Create and add marker
-      const marker = new mapboxgl.Marker(el)
-        .setLngLat([shop.lng, shop.lat])
-        .setPopup(popup)
-        .addTo(map.current!);
+        `
+      });
       
-      marker.getElement().addEventListener('click', () => {
+      // Create and add marker
+      const marker = new google.maps.Marker({
+        position: { lat: shop.lat, lng: shop.lng },
+        map: map.current!,
+        title: shop.name,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#0084e6',
+          fillOpacity: 1,
+          strokeWeight: 2,
+          strokeColor: '#ffffff',
+          scale: 8
+        }
+      });
+      
+      marker.addListener('click', () => {
+        infoWindow.open(map.current!, marker);
         onShopClick(shop.id);
       });
       
@@ -131,14 +139,17 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
     
     // If we have shops, fit map to bounds of all shops
     if (shops.length > 0) {
-      const bounds = new mapboxgl.LngLatBounds();
+      const bounds = new google.maps.LatLngBounds();
       shops.forEach(shop => {
-        bounds.extend([shop.lng, shop.lat]);
+        bounds.extend({ lat: shop.lat, lng: shop.lng });
       });
       
-      map.current.fitBounds(bounds, {
-        padding: 50,
-        maxZoom: 15
+      map.current.fitBounds(bounds);
+      
+      // Don't zoom in too much
+      const listener = google.maps.event.addListener(map.current, 'idle', () => {
+        if (map.current!.getZoom() > 16) map.current!.setZoom(16);
+        google.maps.event.removeListener(listener);
       });
     }
   }, [shops, mapInitialized, onShopClick]);
@@ -147,11 +158,8 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
   useEffect(() => {
     if (!map.current || !mapInitialized || !selectedShop) return;
     
-    map.current.flyTo({
-      center: [selectedShop.lng, selectedShop.lat],
-      zoom: 16,
-      essential: true
-    });
+    map.current.panTo({ lat: selectedShop.lat, lng: selectedShop.lng });
+    map.current.setZoom(16);
   }, [selectedShop, mapInitialized]);
 
   return (
@@ -161,20 +169,20 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
       {!apiKey ? (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-white z-10 p-4 text-center">
           <div className="bg-background border rounded-lg shadow-lg p-6 max-w-md text-foreground">
-            <h3 className="font-bold text-lg mb-4">Mapbox API Key Required</h3>
-            <p className="mb-4">To use the map feature, please enter your Mapbox API token.</p>
+            <h3 className="font-bold text-lg mb-4">Google Maps API Key Required</h3>
+            <p className="mb-4">To use the map feature, please enter your Google Maps API key.</p>
             <div className="flex flex-col gap-4">
               <Input
                 value={inputApiKey}
                 onChange={(e) => setInputApiKey(e.target.value)}
-                placeholder="Enter your Mapbox access token"
+                placeholder="Enter your Google Maps API key"
                 className="w-full"
               />
               <Button onClick={handleSaveApiKey} className="bg-shopfinder-500 hover:bg-shopfinder-600">
                 Save API Key
               </Button>
               <div className="text-sm text-muted-foreground mt-2">
-                <p>Need a token? <a href="https://account.mapbox.com/" target="_blank" rel="noopener noreferrer" className="text-shopfinder-500 hover:underline">Sign up for free at Mapbox</a></p>
+                <p>Need an API key? <a href="https://developers.google.com/maps/documentation/javascript/get-api-key" target="_blank" rel="noopener noreferrer" className="text-shopfinder-500 hover:underline">Get one from Google Maps Platform</a></p>
               </div>
             </div>
           </div>
@@ -193,7 +201,7 @@ const MapView: React.FC<MapViewProps> = ({ shops, selectedShop, onShopClick }) =
           {showKeyForm && (
             <div className="absolute top-full right-0 mt-2 p-4 bg-white rounded-md shadow-lg z-20 w-72">
               <div className="flex justify-between items-center mb-2">
-                <h3 className="font-medium">Mapbox API Key</h3>
+                <h3 className="font-medium">Google Maps API Key</h3>
                 <Button 
                   variant="ghost" 
                   size="icon" 
