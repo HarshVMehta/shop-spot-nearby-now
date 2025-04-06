@@ -111,6 +111,12 @@ export const Navbar = () => {
               {category}
             </Link>
           ))}
+          <Link 
+            to="/mood2food" 
+            className="px-3 py-1 whitespace-nowrap hover:text-yellow-300 bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent font-medium"
+          >
+            Mood2Food
+          </Link>
           <div className="px-3 py-1 flex items-center cursor-pointer hover:text-yellow-300">
             <span>More</span>
             <ChevronDown size={16} className="ml-1" />
@@ -155,6 +161,13 @@ export const Navbar = () => {
               >
                 <Heart size={20} />
                 <span>Wishlist</span>
+              </Link>
+              <Link
+                to="/mood2food"
+                className="flex items-center space-x-2 p-2 hover:bg-gray-700 rounded font-medium text-green-400"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <span>Mood2Food Tracker</span>
               </Link>
               <div className="border-t border-gray-700 my-2"></div>
               <div className="font-medium">Categories</div>
